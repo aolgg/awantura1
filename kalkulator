@@ -1,0 +1,453 @@
+<!-- Chosen Palette: Cool Grays with Team Accent Colors -->
+<!-- Application Structure Plan: Zastosowano strukturę panelu kontrolnego (dashboard). Na górze znajduje się globalny pasek stanu z numerem rundy, wspólną pulą i przyciskiem do przechodzenia do kolejnej rundy. Poniżej, w responsywnej siatce (grid), umieszczono trzy karty, po jednej dla każdej drużyny, zawierające wszystkie akcje licytacyjne. Na dole znajdują się sekcje kontrolujące przepływ gry (wybór zwycięzcy licytacji, a następnie rozstrzygnięcie pytania), które dynamicznie się pokazują i ukrywają. Taka struktura oddziela globalny stan gry od akcji drużyn i prowadzi użytkownika krok po kroku przez logikę rundy, co zwiększa użyteczność i zapobiega błędom. -->
+<!-- Visualization & Content Choices: Punkty i numer rundy (cel: informowanie) -> dynamicznie aktualizowany, duży tekst. Licytacja (cel: interakcja) -> przyciski do szybkich akcji (+100, Va banque) oraz pole do ręcznego wprowadzania, co zapewnia szybkość i elastyczność. Przepływ gry (cel: prowadzenie użytkownika) -> dynamiczne pokazywanie i ukrywanie sekcji HTML, co upraszcza interfejs i prezentuje tylko te akcje, które są relevantne w danym momencie. Komunikaty (cel: informowanie) -> niestandardowy modal dla spójnego i estetycznego doświadczenia. Wybory te wspierają zaprojektowaną strukturę, tworząc przejrzysty i łatwy w obsłudze kalkulator. -->
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Awantura o kasę</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c;
+            background-image: url('https://i.imgur.com/7b5H4nB.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: white;
+        }
+        .backdrop-blur-layer {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(26, 32, 44, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .main-container {
+            position: relative;
+            z-index: 10;
+        }
+        .card {
+            background-color: rgba(45, 55, 72, 0.85);
+            border-radius: 1rem;
+            padding: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .team-card {
+            background-color: rgba(74, 85, 104, 0.75);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .team-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 32px 0 rgba(0, 0, 0, 0.4);
+        }
+        .input-bid {
+            background-color: #2d3748;
+            border: 2px solid #4a5568;
+            color: #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            flex-grow: 1;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: bold;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            border: none;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-quick-add {
+            padding: 0.5rem 0.75rem;
+            background-color: #4c51bf;
+        }
+        .btn-quick-add:hover:not(:disabled) {
+            background-color: #434190;
+            transform: scale(1.05);
+        }
+        .btn-va-banque {
+            padding: 0.5rem 0.75rem;
+            background-color: #d53f8c;
+            font-weight: 900;
+        }
+        .btn-va-banque:hover:not(:disabled) {
+            background-color: #b83280;
+            transform: scale(1.05);
+        }
+        .modal-container {
+            z-index: 50;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="backdrop-blur-layer"></div>
+    
+    <div class="main-container container mx-auto p-4 md:p-8 min-h-screen flex flex-col gap-8">
+        
+        <div class="card text-center py-6">
+            <h1 class="text-4xl md:text-5xl font-black tracking-tighter">AWANTURA O KASĘ</h1>
+        </div>
+
+        <div class="card flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="flex-1 text-center">
+                <h2 class="text-xl font-semibold text-gray-300">Runda</h2>
+                <p id="round-number" class="text-5xl font-bold text-yellow-400">1</p>
+            </div>
+            <div class="flex-1 text-center">
+                <h2 class="text-xl font-semibold text-gray-300">Wspólna pula</h2>
+                <p id="pot-amount" class="text-5xl font-bold text-green-400">0</p>
+            </div>
+            <div class="w-full md:w-auto">
+                <button id="next-round-btn" class="w-full btn bg-blue-600 hover:bg-blue-700 text-white">Rozpocznij następną rundę</button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Drużyna Zielonych -->
+            <div id="green-team-card" class="card team-card border-green-400 border-2 space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-2xl font-bold text-green-400">Zieloni</h3>
+                    <span id="green-score" class="text-3xl font-bold">5000</span>
+                </div>
+                <div class="text-sm font-semibold text-gray-300 mb-2">
+                    Wpłacono w tej rundzie: <span id="green-round-bid">0</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mt-4">
+                    <button onclick="quickBid('green', 100)" class="btn btn-quick-add text-white">100</button>
+                    <button onclick="quickBid('green', 200)" class="btn btn-quick-add text-white">200</button>
+                    <button onclick="quickBid('green', 500)" class="btn btn-quick-add text-white">500</button>
+                    <button onclick="quickBid('green', 1000)" class="btn btn-quick-add text-white">1000</button>
+                    <button onclick="vaBanque('green')" class="btn btn-va-banque text-white">Va banque!</button>
+                    <input type="number" id="green-bid-input" placeholder="Wpisz kwotę..." class="input-bid w-full md:w-auto" min="0">
+                    <button onclick="handleBid('green')" class="btn bg-green-600 hover:bg-green-700 text-white flex-grow">Zagraj!</button>
+                </div>
+            </div>
+
+            <!-- Drużyna Niebieskich -->
+            <div id="blue-team-card" class="card team-card border-blue-400 border-2 space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-2xl font-bold text-blue-400">Niebiescy</h3>
+                    <span id="blue-score" class="text-3xl font-bold">5000</span>
+                </div>
+                <div class="text-sm font-semibold text-gray-300 mb-2">
+                    Wpłacono w tej rundzie: <span id="blue-round-bid">0</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mt-4">
+                    <button onclick="quickBid('blue', 100)" class="btn btn-quick-add text-white">100</button>
+                    <button onclick="quickBid('blue', 200)" class="btn btn-quick-add text-white">200</button>
+                    <button onclick="quickBid('blue', 500)" class="btn btn-quick-add text-white">500</button>
+                    <button onclick="quickBid('blue', 1000)" class="btn btn-quick-add text-white">1000</button>
+                    <button onclick="vaBanque('blue')" class="btn btn-va-banque text-white">Va banque!</button>
+                    <input type="number" id="blue-bid-input" placeholder="Wpisz kwotę..." class="input-bid w-full md:w-auto" min="0">
+                    <button onclick="handleBid('blue')" class="btn bg-blue-600 hover:bg-blue-700 text-white flex-grow">Zagraj!</button>
+                </div>
+            </div>
+
+            <!-- Drużyna Czerwonych -->
+            <div id="red-team-card" class="card team-card border-red-400 border-2 space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-2xl font-bold text-red-400">Czerwoni</h3>
+                    <span id="red-score" class="text-3xl font-bold">5000</span>
+                </div>
+                <div class="text-sm font-semibold text-gray-300 mb-2">
+                    Wpłacono w tej rundzie: <span id="red-round-bid">0</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mt-4">
+                    <button onclick="quickBid('red', 100)" class="btn btn-quick-add text-white">100</button>
+                    <button onclick="quickBid('red', 200)" class="btn btn-quick-add text-white">200</button>
+                    <button onclick="quickBid('red', 500)" class="btn btn-quick-add text-white">500</button>
+                    <button onclick="quickBid('red', 1000)" class="btn btn-quick-add text-white">1000</button>
+                    <button onclick="vaBanque('red')" class="btn btn-va-banque text-white">Va banque!</button>
+                    <input type="number" id="red-bid-input" placeholder="Wpisz kwotę..." class="input-bid w-full md:w-auto" min="0">
+                    <button onclick="handleBid('red')" class="btn bg-red-600 hover:bg-red-700 text-white flex-grow">Zagraj!</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="bid-winner-section" class="card text-center flex flex-col md:flex-row justify-center items-center gap-4">
+            <h2 class="text-xl font-semibold">Kto wygrał licytację?</h2>
+            <div class="flex flex-col md:flex-row gap-4">
+                <button onclick="handleBidWinner('green')" class="btn bg-green-500 hover:bg-green-600 text-white">Zieloni</button>
+                <button onclick="handleBidWinner('blue')" class="btn bg-blue-500 hover:bg-blue-600 text-white">Niebiescy</button>
+                <button onclick="handleBidWinner('red')" class="btn bg-red-500 hover:bg-red-600 text-white">Czerwoni</button>
+            </div>
+        </div>
+
+        <div id="hint-section" class="card text-center flex-col items-center gap-4 hidden">
+            <h2 class="text-xl font-semibold mb-4">Drużyna <span id="hint-winner-name" class="font-bold"></span> wygrała licytację. Chcecie kupić podpowiedź?</h2>
+            <div class="flex flex-col md:flex-row gap-4 mb-4">
+                <input type="number" id="hint-cost-input" placeholder="Wpisz kwotę podpowiedzi..." class="input-bid w-full md:w-auto" min="0">
+                <button onclick="buyHint()" class="btn bg-purple-600 hover:bg-purple-700 text-white">Kup podpowiedź</button>
+            </div>
+            <button onclick="skipHint()" class="btn bg-gray-500 hover:bg-gray-600 text-white w-full">Dalej bez podpowiedzi</button>
+        </div>
+
+        <div id="question-section" class="card text-center flex-col items-center gap-4 hidden">
+            <h2 id="question-text" class="text-xl font-semibold mb-4">Drużyna <span id="winner-name" class="font-bold"></span> gra o pulę!</h2>
+            <div class="flex flex-col md:flex-row gap-4">
+                <button onclick="handleAnswer('correct')" class="btn bg-lime-500 hover:bg-lime-600 text-white">Odpowiedź poprawna</button>
+                <button onclick="handleAnswer('incorrect')" class="btn bg-red-500 hover:bg-red-600 text-white">Odpowiedź niepoprawna</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal" class="modal-container fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden p-4">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-sm border border-gray-700">
+            <p id="modal-message" class="text-lg font-semibold mb-6"></p>
+            <button onclick="closeModal()" class="btn bg-indigo-600 hover:bg-indigo-700 text-white w-full">OK</button>
+        </div>
+    </div>
+
+<script>
+    let round = 1;
+    let pot = 0;
+    let scores = { green: 5000, blue: 5000, red: 5000 };
+    let roundBids = { green: 0, blue: 0, red: 0 };
+    const roundFee = 200;
+    let bidWinner = null;
+    const teamNames = { green: 'Zieloni', blue: 'Niebiescy', red: 'Czerwoni' };
+    const roundNumberEl = document.getElementById('round-number');
+    const potAmountEl = document.getElementById('pot-amount');
+    const scoreEls = {
+        green: document.getElementById('green-score'),
+        blue: document.getElementById('blue-score'),
+        red: document.getElementById('red-score')
+    };
+    const roundBidEls = {
+        green: document.getElementById('green-round-bid'),
+        blue: document.getElementById('blue-round-bid'),
+        red: document.getElementById('red-round-bid')
+    };
+    const bidInputs = {
+        green: document.getElementById('green-bid-input'),
+        blue: document.getElementById('blue-bid-input'),
+        red: document.getElementById('red-bid-input')
+    };
+    const hintCostInput = document.getElementById('hint-cost-input');
+    const modal = document.getElementById('modal');
+    const modalMessage = document.getElementById('modal-message');
+    const nextRoundBtn = document.getElementById('next-round-btn');
+    const bidWinnerSection = document.getElementById('bid-winner-section');
+    const hintSection = document.getElementById('hint-section');
+    const hintWinnerNameEl = document.getElementById('hint-winner-name');
+    const questionSection = document.getElementById('question-section');
+    const winnerNameEl = document.getElementById('winner-name');
+
+    function updateDisplay() {
+        roundNumberEl.textContent = round;
+        potAmountEl.textContent = pot;
+        
+        const maxBid = Math.max(roundBids.green, roundBids.blue, roundBids.red);
+
+        Object.keys(scores).forEach(team => {
+            scoreEls[team].textContent = scores[team];
+            
+            const bidEl = roundBidEls[team];
+            const bidValue = roundBids[team];
+
+            bidEl.classList.remove('text-red-500', 'text-2xl', 'font-black');
+            bidEl.textContent = bidValue;
+
+            if (bidValue > 0 && bidValue === maxBid) {
+                bidEl.classList.add('text-red-500', 'text-2xl', 'font-black');
+                bidEl.textContent = `${bidValue} !`;
+            }
+        });
+    }
+
+    function showModal(message) {
+        modalMessage.textContent = message;
+        modal.classList.remove('hidden');
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+    }
+
+    function toggleBiddingControls(enabled) {
+        document.querySelectorAll('.team-card input, .team-card button').forEach(el => {
+            el.disabled = !enabled;
+        });
+    }
+
+    function executeBid(team, bidAmount) {
+        if (bidWinner) {
+            showModal("Licytacja w tej rundzie została już zakończona!");
+            return false;
+        }
+        if (isNaN(bidAmount) || bidAmount <= 0) {
+            showModal("Wprowadź poprawną, dodatnią kwotę.");
+            return false;
+        }
+        if (bidAmount > scores[team]) {
+            showModal(`Drużyna ${teamNames[team]} ma za mało punktów!`);
+            return false;
+        }
+        scores[team] -= bidAmount;
+        roundBids[team] += bidAmount;
+        pot += bidAmount;
+        updateDisplay();
+        return true;
+    }
+
+    function quickBid(team, amount) {
+        if (executeBid(team, amount)) {
+             // Komunikat usunięty na życzenie użytkownika
+        }
+    }
+    
+    function vaBanque(team) {
+        const bidAmount = scores[team];
+        if (bidAmount === 0) {
+            showModal(`Drużyna ${teamNames[team]} nie ma punktów, aby zagrać va banque!`);
+            return;
+        }
+        if (executeBid(team, bidAmount)) {
+             // Komunikat usunięty na życzenie użytkownika
+        }
+    }
+
+    function handleBid(team) {
+        const bidAmount = parseInt(bidInputs[team].value, 10);
+        if (executeBid(team, bidAmount)) {
+            showModal(`Drużyna ${teamNames[team]} wpłaciła ${bidAmount} do puli.`);
+            bidInputs[team].value = '';
+        }
+    }
+
+    function startNewRound() {
+        if (bidWinner) {
+            showModal("Najpierw rozstrzygnij pytanie, aby zakończyć obecną rundę!");
+            return;
+        }
+        if (round >= 8) {
+            showModal("Gra zakończona! Osiągnięto maksymalną liczbę rund (8).");
+            nextRoundBtn.disabled = true;
+            return;
+        }
+        round++;
+        
+        let feeMessage = "";
+        let teamsInRoundCount = 0;
+
+        Object.keys(scores).forEach(team => {
+            document.getElementById(`${team}-team-card`).classList.remove('opacity-50');
+            document.getElementById(`${team}-team-card`).querySelectorAll('button, input').forEach(el => el.disabled = false);
+
+            if (scores[team] < roundFee) {
+                scores[team] = 0;
+                feeMessage += `Drużyna ${teamNames[team]} nie miała 200 punktów i odpada z licytacji w tej rundzie.\n`;
+                document.getElementById(`${team}-team-card`).classList.add('opacity-50');
+                document.getElementById(`${team}-team-card`).querySelectorAll('button, input').forEach(el => el.disabled = true);
+            } else {
+                scores[team] -= roundFee;
+                pot += roundFee;
+                teamsInRoundCount++;
+            }
+        });
+        
+        roundBids = { green: 0, blue: 0, red: 0 };
+        Object.values(bidInputs).forEach(input => input.value = '');
+        
+        hintSection.classList.add('hidden');
+        questionSection.classList.add('hidden');
+        bidWinnerSection.classList.remove('hidden');
+        updateDisplay();
+        showModal(`Rozpoczęto rundę ${round}. ${feeMessage}Łącznie do puli dodano ${roundFee * teamsInRoundCount} punktów.`);
+    }
+
+    function handleBidWinner(winningTeam) {
+        bidWinner = winningTeam;
+        toggleBiddingControls(false);
+        bidWinnerSection.classList.add('hidden');
+        hintSection.classList.remove('hidden');
+        hintWinnerNameEl.textContent = teamNames[winningTeam];
+        hintWinnerNameEl.className = `font-bold text-${winningTeam}-400`;
+    }
+
+    function buyHint() {
+        const hintCost = parseInt(hintCostInput.value, 10);
+        if (isNaN(hintCost) || hintCost <= 0) {
+            showModal("Wprowadź poprawną, dodatnią kwotę podpowiedzi.");
+            return;
+        }
+        if (scores[bidWinner] < hintCost) {
+            showModal(`Drużyna ${teamNames[bidWinner]} ma za mało punktów, aby kupić podpowiedź! Koszt to ${hintCost} punktów.`);
+            return;
+        }
+        scores[bidWinner] -= hintCost;
+        updateDisplay();
+        showModal(`Drużyna ${teamNames[bidWinner]} kupiła podpowiedź za ${hintCost} punktów. Stracili tę kwotę z puli.`);
+        proceedToQuestion();
+    }
+
+    function skipHint() {
+        showModal(`Drużyna ${teamNames[bidWinner]} rezygnuje z podpowiedzi.`);
+        proceedToQuestion();
+    }
+
+    function proceedToQuestion() {
+        hintSection.classList.add('hidden');
+        questionSection.classList.remove('hidden');
+        winnerNameEl.textContent = teamNames[bidWinner];
+        winnerNameEl.className = `font-bold text-${bidWinner}-400`;
+        showModal(`Drużyna ${teamNames[bidWinner]} gra o pulę ${pot} punktów!`);
+    }
+
+    function handleAnswer(result) {
+        if (!bidWinner) return;
+        if (result === 'correct') {
+            scores[bidWinner] += pot;
+            showModal(`Poprawna odpowiedź! Drużyna ${teamNames[bidWinner]} zdobywa ${pot} punktów.`);
+            pot = 0;
+        } else {
+            showModal(`Niepoprawna odpowiedź. Pula ${pot} punktów przechodzi na następną rundę.`);
+        }
+        bidWinner = null;
+        updateDisplay();
+        questionSection.classList.add('hidden');
+        bidWinnerSection.classList.remove('hidden');
+        toggleBiddingControls(true);
+    }
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        // Obowiązkowa opłata początkowa przy załadowaniu strony
+        let teamsInRoundCount = 0;
+        let initialFeeMessage = "";
+        
+        Object.keys(scores).forEach(team => {
+            if (scores[team] < roundFee) {
+                 scores[team] = 0;
+                 initialFeeMessage += `Drużyna ${teamNames[team]} nie miała 200 punktów i odpada z licytacji w tej rundzie.\n`;
+                 document.getElementById(`${team}-team-card`).classList.add('opacity-50');
+                 document.getElementById(`${team}-team-card`).querySelectorAll('button, input').forEach(el => el.disabled = true);
+            } else {
+                 scores[team] -= roundFee;
+                 pot += roundFee;
+                 teamsInRoundCount++;
+            }
+        });
+        
+        updateDisplay();
+        showModal(`Gra rozpoczęta! Każda z drużyn, która miała wystarczającą ilość punktów, zapłaciła 200 punktów opłaty. Łącznie do puli dodano ${roundFee * teamsInRoundCount} punktów. `);
+        
+        nextRoundBtn.addEventListener('click', startNewRound);
+    });
+</script>
+
+</body>
+</html>
